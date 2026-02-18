@@ -12,8 +12,13 @@ static void recvRadio(void)
         PRINTF("radio receive failed\n");
     }
     else if (len > 0) {
-        PRINTF("radio receive %d bytes\n", len);
-        debugHexdump((uint8_t *)radioBuffer, len);
+        // accept only the expected payload from our sender
+        static const char expected[] = "hello";
+        if (len == (int16_t)sizeof(expected) &&
+            memcmp(radioBuffer, expected, sizeof(expected)) == 0) {
+            PRINTF("radio receive %d bytes\n", len);
+            debugHexdump((uint8_t *)radioBuffer, len);
+        }
     }
 }
 
