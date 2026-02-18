@@ -17,6 +17,10 @@ typedef struct __attribute__((packed)) {
     uint16_t crc;
 } LightRadioPacket;
 
+static volatile bool havePkt;
+static LightRadioPacket lastPkt;
+static int8_t lastRssi;
+
 static bool magicOk(const uint8_t magic[4])
 {
     return magic[0] == 'L' && magic[1] == 'R' && magic[2] == 'A' && magic[3] == 'D';
@@ -44,18 +48,25 @@ static void recvLight(void)
     if (pkt.group != LIGHTRADIO_GROUP) return;
     if (pkt.crc != packetCrc(&pkt)) return;
 
-    int8_t rssi = radioGetLastRSSI();
-    PRINTF("from=%#04x seq=%lu light=%u rssi=%d\n",
-           pkt.sender, (unsigned long)pkt.seq, (unsigned)pkt.light, (int)rssi);
+    lastRssi = radioGetLastRSSI();
+    lastPkt = pkt;
+    havePkt = true;
     greenLedToggle();
 }
 
 void appMain(void)
 {
+    radioInit();
     radioSetReceiveHandle(recvLight);
     radioOn();
 
     while (1) {
+        if (havePkt) {
+            havePkt = false;
+            PRINTF("from=%#04x seq=%lu light=%u rssi=%d\n",
+                   lastPkt.sender, (unsigned long)lastPkt.seq,
+                   (unsigned)lastPkt.light, (int)lastRssi);
+        }
         mdelay(1000);
         blueLedToggle();
     }
