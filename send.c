@@ -1,94 +1,62 @@
 #include "stdmansos.h"
-#include <light.h>
 #include <lib/codec/crc.h>
 #include <string.h>
-#include <net/address.h>
 
-#define MANSOS
-#include "data_packet.h"
+#define LIGHTRADIO_GROUP 0x2026
+#define LIGHTRADIO_VERSION 1
+#define LIGHTRADIO_TYPE_LIGHT 1
 
-// Use a unique PAN ID to ignore other traffic on the same channel
-#define LIGHT_PAN_ID_LO 0x26
-#define LIGHT_PAN_ID_HI 0x02
+typedef struct __attribute__((packed)) {
+    uint8_t magic[4];     // "LRAD"
+    uint8_t version;
+    uint8_t type;
+    uint16_t group;
+    uint16_t sender;
+    uint32_t seq;
+    uint16_t light;
+    uint16_t crc;
+} LightRadioPacket;
 
-struct Ieee802_15_4_Packet_s {
-	uint8_t fcf[2];
-	uint8_t seqnum;
-	uint8_t panId[2];
-	uint8_t dstAddress[2];
-	uint8_t srcAddress[8];
-	uint8_t seqnum2;
-	uint8_t something1;
-	uint8_t packetId;
-	uint8_t something2;
-	uint8_t something3;
-	uint8_t typeSourceId;
-	uint8_t networkAddressOrigin[2];
-	uint8_t data[24];
-} PACKED;
+static bool magicOk(const uint8_t magic[4])
+{
+    return magic[0] == 'L' && magic[1] == 'R' && magic[2] == 'A' && magic[3] == 'D';
+}
 
-typedef struct Ieee802_15_4_Packet_s Ieee802_15_4_Packet_t;
+static uint16_t packetCrc(const LightRadioPacket *p)
+{
+    return crc16((const uint8_t *)p, sizeof(*p) - sizeof(p->crc));
+}
 
-static Ieee802_15_4_Packet_t myPacket = {
-	.fcf = {0x41, 0xc8},
-	.panId = {LIGHT_PAN_ID_LO, LIGHT_PAN_ID_HI},
-	.dstAddress = {0xff, 0xff},
-	.something1 = 0xab,
-	.packetId = SAD_DATA_ID,
-	.something2 = 0x01,
-	.something3 = 0x23,
-	.typeSourceId = 0x00,
-	.networkAddressOrigin = {0x56, 0x79},
-};
+static void recvLight(void)
+{
+    uint8_t buffer[RADIO_MAX_PACKET];
+    int16_t len = radioRecv(buffer, sizeof(buffer));
+    if (len != (int16_t)sizeof(LightRadioPacket)) {
+        return;
+    }
 
-static uint8_t mySeqnum;
+    LightRadioPacket pkt;
+    memcpy(&pkt, buffer, sizeof(pkt));
 
-MosShortAddr localAddress = 0x0002;
+    if (!magicOk(pkt.magic)) return;
+    if (pkt.version != LIGHTRADIO_VERSION) return;
+    if (pkt.type != LIGHTRADIO_TYPE_LIGHT) return;
+    if (pkt.group != LIGHTRADIO_GROUP) return;
+    if (pkt.crc != packetCrc(&pkt)) return;
+
+    int8_t rssi = radioGetLastRSSI();
+    PRINTF("from=%#04x seq=%lu light=%u rssi=%d\n",
+           pkt.sender, (unsigned long)pkt.seq, (unsigned)pkt.light, (int)rssi);
+    greenLedToggle();
+}
 
 void appMain(void)
 {
-	DataPacket_t packet;
+    radioSetReceiveHandle(recvLight);
+    radioOn();
 
-	memset(&packet, 0, sizeof(packet));
-
-	lightInit();
-	lightOn();
-
-	radioOn();
-
-	memset(myPacket.srcAddress, 0, sizeof(myPacket.srcAddress));
-	myPacket.srcAddress[0] = (uint8_t)(localAddress & 0xff);
-	myPacket.srcAddress[1] = (uint8_t)((localAddress >> 8) & 0xff);
-
-	PRINTF("LightRadioSend: addr=%#04x pan=%#02x%#02x\n",
-			localAddress, LIGHT_PAN_ID_HI, LIGHT_PAN_ID_LO);
-
-	while (1) {
-		packet.timestamp = (uint16_t)getJiffies();
-		packet.sourceAddress = localAddress;
-		packet.dataSeqnum = ++mySeqnum;
-
-		packet.islLight = lightRead();
-		packet.apdsLight0 = 0xffff;
-		packet.apdsLight1 = 0xffff;
-		packet.sq100Light = 0xffff;
-		packet.internalVoltage = 0xffff;
-		packet.internalTemperature = 0xffff;
-		packet.sht75Humidity = 0xffff;
-		packet.sht75Temperature = 0xffff;
-
-		packet.crc = crc16((uint8_t *)&packet, sizeof(packet) - 2);
-
-		memcpy(&myPacket.data, &packet, sizeof(DataPacket_t));
-		myPacket.seqnum = myPacket.seqnum2 = mySeqnum;
-
-		if (radioSend(&myPacket, sizeof(myPacket)) != 0) {
-			PRINTF("radioSend failed\n");
-		} else {
-			PRINTF("sent seq=%u light=%u\n", mySeqnum, packet.islLight);
-		}
-
-		redLedToggle();
-		mdelay(1000);
-	}
+    while (1) {
+        mdelay(1000);
+        blueLedToggle();
+    }
 }
