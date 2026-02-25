@@ -11,28 +11,25 @@ static void recvRadio(void)
     if (len < 0) {
         return;
     }
-    if (len < (int16_t)sizeof(Pd4PacketHeader_t)) {
+
+    // packets are exactly one struct size
+    if (len != (int16_t)sizeof(Pd4Packet_t)) {
         return;
     }
 
     {
-        Pd4PacketHeader_t header;
+        Pd4Packet_t packet;
+        uint16_t light;
 
-        // read fixed-size header
-        memcpy(&header, radioBuffer, sizeof(header));
+        memcpy(&packet, radioBuffer, sizeof(packet));
 
-        // filter out other senders on the same channel via key
-        if (header.keyLen != PD4_KEY_LEN) {
-            return;
-        }
-        if (len != (int16_t)(sizeof(Pd4PacketHeader_t) + header.keyLen)) {
-            return;
-        }
-        if (memcmp(radioBuffer + sizeof(Pd4PacketHeader_t), PD4_KEY, header.keyLen) != 0) {
+        // compare key
+        if (memcmp(packet.key, PD4_KEY_STR, PD4_KEY_LEN) != 0) {
             return;
         }
 
-        PRINTF("%u\n", (unsigned)header.light);
+        memcpy(&light, &packet.light, sizeof(light));
+        PRINTF("%u\n", (unsigned)light);
     }
 }
 

@@ -3,14 +3,12 @@
 
 #include <defines.h>
 
-// shared "key" used to recognize our packets on the same radio channel
-#define PD4_KEY "PD4IVOLIVABEST"
-#define PD4_KEY_LEN ((uint8_t)(sizeof(PD4_KEY) - 1))
+#define PD4_KEY_STR "PD4K"
+#define PD4_KEY_LEN 4
 
 typedef struct __attribute__((packed)) {
-    uint8_t keyLen;
-    uint8_t reserved;
+    uint8_t key[PD4_KEY_LEN];
     uint16_t light;
-} Pd4PacketHeader_t;
+} Pd4Packet_t;
 
 #endif // PD4_PACKET_H
