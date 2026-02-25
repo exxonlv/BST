@@ -1,43 +1,31 @@
 #include "stdmansos.h"
+#include <string.h>
 
-#define PD4_MAGIC 0xB105u
-#define PD4_SECRET 0x5A3Cu
-
-typedef struct __attribute__((packed)) {
-    uint16_t magic;
-    uint16_t sender;
-    uint16_t light;
-    uint16_t crc;
-} Pd4Packet_t;
-
-static uint16_t crc16_ccitt(const uint8_t *data, uint16_t len, uint16_t seed)
-{
-    uint16_t crc = seed;
-    uint8_t i;
-    while (len--) {
-        crc ^= (uint16_t)(*data++) << 8;
-        for (i = 0; i < 8; i++) {
-            crc = (crc & 0x8000u) ? (uint16_t)((crc << 1) ^ 0x1021u)
-                                 : (uint16_t)(crc << 1);
-        }
-    }
-    return crc;
-}
+#include "pd4_packet.h"
 
 void appMain(void)
 {
     lightOn();
+    radioInit();
     radioOn();
 
-    PRINTF("Forwarder started...\n");
-
     while (1) {
-        Pd4Packet_t pkt;
-        pkt.magic = PD4_MAGIC;
-        pkt.light = lightRead();
-        pkt.crc = crc16_ccitt((uint8_t *)&pkt, sizeof(pkt) - sizeof(pkt.crc), PD4_SECRET);
+        // packet = fixed header + variable-length key bytes
+        uint8_t buf[sizeof(Pd4PacketHeader_t) + PD4_KEY_LEN];
+        Pd4PacketHeader_t header;
+        uint16_t light;
 
-        radioSend(&pkt, sizeof(pkt));
+        // read sensor and fill packet header.
+        light = lightRead();
+        header.keyLen = PD4_KEY_LEN;
+        header.reserved = 0;
+        header.light = light;
+
+        // serialize header and key into a contiguous buffer for radioSend()
+        memcpy(buf, &header, sizeof(header));
+        memcpy(buf + sizeof(header), PD4_KEY, PD4_KEY_LEN);
+
+        radioSend(buf, sizeof(buf));
         redLedToggle();
         mdelay(1000);
     }
