@@ -13,9 +13,10 @@ typedef struct __attribute__((packed)) {
 static uint16_t crc16_ccitt(const uint8_t *data, uint16_t len, uint16_t seed)
 {
     uint16_t crc = seed;
+    uint8_t i;
     while (len--) {
         crc ^= (uint16_t)(*data++) << 8;
-        for (uint8_t i = 0; i < 8; i++) {
+        for (i = 0; i < 8; i++) {
             crc = (crc & 0x8000u) ? (uint16_t)((crc << 1) ^ 0x1021u)
                                  : (uint16_t)(crc << 1);
         }
@@ -33,7 +34,6 @@ void appMain(void)
     while (1) {
         Pd4Packet_t pkt;
         pkt.magic = PD4_MAGIC;
-        pkt.sender = localAddress;
         pkt.light = lightRead();
         pkt.crc = crc16_ccitt((uint8_t *)&pkt, sizeof(pkt) - sizeof(pkt.crc), PD4_SECRET);
 
